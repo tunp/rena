@@ -88,27 +88,31 @@ void TrackLoader::load() {
                     while(xml.readNextStartElement()) {
                         if(xml.name() == "trkpt") {
                             TrackPoint point;
-                            point.latitude = xml.attributes().value("lat").toDouble();
-                            point.longitude = xml.attributes().value("lon").toDouble();
+                            point.setLatitude(xml.attributes().value("lat").toDouble());
+                            point.setLongitude(xml.attributes().value("lon").toDouble());
                             while(xml.readNextStartElement()) {
                                 if(xml.name() == "time") {
-                                    point.time = QDateTime::fromString(xml.readElementText(),Qt::ISODate);
+                                    point.setTime(QDateTime::fromString(xml.readElementText(),Qt::ISODate));
                                 } else if(xml.name() == "ele") {
-                                    point.elevation = xml.readElementText().toDouble();
+                                    point.setElevation(xml.readElementText().toDouble());
                                 } else if(xml.name() == "extensions") {
                                     while(xml.readNextStartElement()) {
                                         if(xml.name() == "dir") {
-                                            point.direction = xml.readElementText().toDouble();
+                                            point.setDirection(xml.readElementText().toDouble());
                                         } else if(xml.name() == "g_spd") {
-                                            point.groundSpeed = xml.readElementText().toDouble();
+                                            point.setGroundSpeed(xml.readElementText().toDouble());
                                         } else if(xml.name() == "v_spd") {
-                                            point.verticalSpeed = xml.readElementText().toDouble();
+                                            point.setVerticalSpeed(xml.readElementText().toDouble());
                                         } else if(xml.name() == "m_var") {
-                                            point.magneticVariation = xml.readElementText().toDouble();
+                                            point.setMagneticVariation(xml.readElementText().toDouble());
                                         } else if(xml.name() == "h_acc") {
-                                            point.horizontalAccuracy = xml.readElementText().toDouble();
+                                            point.setHorizontalAccuracy(xml.readElementText().toDouble());
                                         } else if(xml.name() == "v_acc") {
-                                            point.verticalAccuracy = xml.readElementText().toDouble();
+                                            point.setVerticalAccuracy(xml.readElementText().toDouble());
+                                        } else if(xml.name() == "distance") {
+                                            point.setDistance(xml.readElementText().toDouble());
+                                        } else if(xml.name() == "cadence") {
+                                            point.setCadence(xml.readElementText().toDouble());
                                         }
                                     }
                                 }
@@ -132,9 +136,15 @@ void TrackLoader::load() {
         emit timeChanged();
         m_distance = 0;
         for(int i=1;i<m_points.size();i++) {
-            QGeoCoordinate first(m_points.at(i-1).latitude,m_points.at(i-1).longitude);
-            QGeoCoordinate second(m_points.at(i).latitude,m_points.at(i).longitude);
-            m_distance += first.distanceTo(second);
+			TrackPoint *p1 = &m_points[i-1];
+			TrackPoint *p2 = &m_points[i];
+			if (p1->hasCoordinate() && p2->hasCoordinate()) {
+				QGeoCoordinate coord1(p1->getLatitude(), p1->getLongitude());
+				QGeoCoordinate coord2(p2->getLatitude(), p2->getLongitude());
+				m_distance += coord1.distanceTo(coord2);
+			} else if (p1->hasDistance() && p2->hasDistance()) {
+				m_distance += p2->getDistance() - p1->getDistance();
+			}
             if(m_points.at(i).groundSpeed > m_maxSpeed) {
                 m_maxSpeed = m_points.at(i).groundSpeed;
             }
@@ -322,6 +332,14 @@ QGeoCoordinate TrackLoader::trackPointAt(int index) {
     return QGeoCoordinate(m_points.at(index).latitude,
                           m_points.at(index).longitude,
                           m_points.at(index).elevation);
+}
+
+TrackPoint TrackLoader::trackPointAt2(int index) {
+	return m_points.at(index);
+}
+
+QDateTime TrackLoader::trackPointTimeAt(int index) {
+	return m_points.at(index).time;
 }
 
 int TrackLoader::fitZoomLevel(int width, int height) {

@@ -22,6 +22,7 @@ import QtQuick 2.0
 import Sailfish.Silica 1.0
 import Settings 1.0
 import TrackRecorder 1.0
+import Plugins 1.0
 import "pages"
 
 ApplicationWindow {
@@ -32,9 +33,15 @@ ApplicationWindow {
     Settings {
         id: settings
     }
+    
+    Plugins {
+		id: plugins
+		objectName: "plugins"
+    }
 
     TrackRecorder {
         id: recorder
+        objectName: "recorder"
         applicationActive: appWindow.applicationActive
         updateInterval: settings.updateInterval
     }

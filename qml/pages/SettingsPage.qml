@@ -24,6 +24,7 @@ import Sailfish.Silica 1.0
 
 Page {
     id: page
+    property var pluginList
 
     Component.onCompleted: {
         if(settings.updateInterval <= 1000) updateIntervalMenu.currentIndex = 0;
@@ -33,6 +34,11 @@ Page {
         else if(settings.updateInterval <= 15000) updateIntervalMenu.currentIndex = 4;
         else if(settings.updateInterval <= 30000) updateIntervalMenu.currentIndex = 5;
         else updateIntervalMenu.currentIndex = 6;
+        
+        pluginList = plugins.getNames();
+        for (var i = 0; i < pluginList.length; i++) {
+			uploadPluginsModel.append(pluginList[i]);
+        }
     }
 
     SilicaFlickable {
@@ -58,6 +64,28 @@ Page {
                     MenuItem { text: qsTr("1 minute"); onClicked: settings.updateInterval = 60000; }
                 }
             }
+			Label {
+				text: "Upload plugins"
+			}
+			ListModel {
+				id: uploadPluginsModel
+			}
+			Repeater {
+				model: uploadPluginsModel
+				delegate: uploadPluginsDelegate
+			}
         }
     }
+    
+	Component {
+		id: uploadPluginsDelegate
+		Button {
+			id: buttonId
+			text: name
+			onClicked: {
+				plugins.openSettings(buttonId.text);
+				pageStack.push(Qt.resolvedUrl("/usr/share/harbour-rena/qml/plugins/UploadRunKeeperSettings.qml"))
+			}
+		}
+	}
 }

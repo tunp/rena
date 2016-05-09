@@ -25,6 +25,9 @@
 #include <QGeoPositionInfoSource>
 #include <QTimer>
 
+#include "plugins.h"
+#include "TrackPoint.h"
+
 class TrackRecorder : public QObject
 {
     Q_OBJECT
@@ -75,7 +78,9 @@ signals:
     void newTrackPoint(QGeoCoordinate coordinate);
 
 public slots:
+	void connectPlugins();
     void positionUpdated(const QGeoPositionInfo &newPos);
+    void positionUpdated(TrackPoint newPoint);
     void positioningError(QGeoPositionInfoSource::Error error);
     void autoSave();
 
@@ -83,7 +88,10 @@ private:
     void loadAutoSave();
     QGeoPositionInfoSource *m_posSrc;
     qreal m_accuracy;
-    QList<QGeoPositionInfo> m_points;
+    //QList<TrackPoint> m_points;
+    QMap<uint, TrackPoint> m_points;
+    uint last_position_time;
+    uint last_distance_time;
     QGeoCoordinate m_currentPosition;
     qreal m_distance;
     qreal m_minLat;
@@ -93,8 +101,9 @@ private:
     bool m_tracking;
     bool m_isEmpty;
     bool m_applicationActive;
-    int m_autoSavePosition;
+    uint m_autoSavePosition;
     QTimer m_autoSaveTimer;
+    Plugins *plugins;
     };
 
 #endif // TRACKRECORDER_H

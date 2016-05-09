@@ -24,6 +24,7 @@
 #include <QXmlStreamWriter>
 #include <QDebug>
 #include <qmath.h>
+#include <iterator>
 #include "trackrecorder.h"
 
 TrackRecorder::TrackRecorder(QObject *parent) :
@@ -36,6 +37,8 @@ TrackRecorder::TrackRecorder(QObject *parent) :
     m_isEmpty = true;
     m_applicationActive = true;
     m_autoSavePosition = 0;
+    last_position_time = 0;
+    last_distance_time = 0;
 
     // Load autosaved track if left from previous session
     loadAutoSave();
@@ -56,11 +59,32 @@ TrackRecorder::TrackRecorder(QObject *parent) :
     } else {
         qDebug()<<"Failed initializing PositionInfoSource!";
     }
+    QTimer::singleShot(1000, this, SLOT(connectPlugins()));
+    qDebug()<<"tr end";
 }
 
 TrackRecorder::~TrackRecorder() {
     qDebug()<<"TrackRecorder destructor";
     autoSave();
+}
+
+void TrackRecorder::connectPlugins() {
+	QObject *plugins_obj = parent()->findChild<QObject*>("plugins");
+	if (plugins_obj) {
+		qDebug() << "got plugins_obj";
+		plugins = qobject_cast<Plugins *>(plugins_obj);
+		if (plugins) {
+			qDebug() << "got plugins for setting signal";
+			connect(plugins, SIGNAL(infoAvailable(TrackPoint)), this, SLOT(positionUpdated(TrackPoint)));
+			connect(this, SIGNAL(isTrackingChanged()), plugins, SLOT(changeTrackingStatus()));
+		} else {
+			qDebug() << "didn't get plugins for setting signal";
+			QTimer::singleShot(1000, this, SLOT(connectPlugins()));
+		}
+	} else {
+		qDebug() << "didn't get plugins_obj";
+		QTimer::singleShot(1000, this, SLOT(connectPlugins()));
+	}
 }
 
 void TrackRecorder::positionUpdated(const QGeoPositionInfo &newPos) {
@@ -80,7 +104,19 @@ void TrackRecorder::positionUpdated(const QGeoPositionInfo &newPos) {
     }
 
     if(m_tracking) {
-        m_points.append(newPos);
+		TrackPoint tp(newPos);
+		if (tp.hasCoordinate()) {
+			if (last_position_time != 0 && last_position_time < tp.getTime().toTime_t()) {
+				TrackPoint *last_position_point = &m_points[last_position_time];
+				QGeoCoordinate coord(last_position_point->getLatitude(), last_position_point->getLongitude());
+				m_distance += coord.distanceTo(newPos.coordinate());
+				last_distance_time = 0;
+			}
+			last_position_time = tp.getTime().toTime_t();
+		}
+		
+		m_points[newPos.timestamp().toTime_t()].combine(tp, true);
+        
         emit pointsChanged();
         emit timeChanged();
         if(m_isEmpty) {
@@ -93,7 +129,6 @@ void TrackRecorder::positionUpdated(const QGeoPositionInfo &newPos) {
         if(m_points.size() > 1) {
             // Next line triggers following compiler warning?
             // \usr\include\qt5\QtCore\qlist.h:452: warning: assuming signed overflow does not occur when assuming that (X - c) > X is always false [-Wstrict-overflow]
-            m_distance += m_points.at(m_points.size()-2).coordinate().distanceTo(m_points.at(m_points.size()-1).coordinate());
             emit distanceChanged();
             if(newPos.coordinate().latitude() < m_minLat) {
                 m_minLat = newPos.coordinate().latitude();
@@ -110,6 +145,32 @@ void TrackRecorder::positionUpdated(const QGeoPositionInfo &newPos) {
     }
 }
 
+void TrackRecorder::positionUpdated(TrackPoint newPoint) {
+	if (m_tracking) {
+		qDebug() << "check1" << &newPoint << newPoint.getDistance();
+		m_points[newPoint.getTime().toTime_t()].combine(newPoint, false);
+		qDebug() << "check2" << &m_points[newPoint.getTime().toTime_t()] << m_points[newPoint.getTime().toTime_t()].getDistance();
+		
+        emit pointsChanged();
+        emit timeChanged();
+        if(m_isEmpty) {
+            m_isEmpty = false;
+            emit isEmptyChanged();
+        }
+        
+        if (newPoint.hasDistance()) {
+			qDebug() << "new track distance" << newPoint.getDistance();
+			if ((last_position_time == 0 || last_position_time < newPoint.getTime().toTime_t() - 5) && last_distance_time != 0 && last_distance_time < newPoint.getTime().toTime_t()) {
+				TrackPoint *last_distance_point = &m_points[last_distance_time];
+				m_distance += newPoint.getDistance() - last_distance_point->getDistance();
+				last_position_time = 0;
+			}
+			last_distance_time = newPoint.getTime().toTime_t();
+		}
+        emit distanceChanged();
+	}
+}
+
 void TrackRecorder::positioningError(QGeoPositionInfoSource::Error error) {
     qDebug()<<"Positioning error:"<<error;
 }
@@ -124,10 +185,10 @@ void TrackRecorder::exportGpx(QString name, QString desc) {
     QString subDir = "Rena";
     QString filename;
     if(!name.isEmpty()) {
-        filename = m_points.at(0).timestamp().toUTC().toString(Qt::ISODate)
+        filename = m_points.begin().value().getTime().toUTC().toString(Qt::ISODate)
                 + " - " + name + ".gpx";
     } else {
-        filename = m_points.at(0).timestamp().toUTC().toString(Qt::ISODate)
+        filename = m_points.begin().value().getTime().toUTC().toString(Qt::ISODate)
                 + ".gpx";
     }
     qDebug()<<"File:"<<homeDir<<"/"<<subDir<<"/"<<filename;
@@ -173,37 +234,40 @@ void TrackRecorder::exportGpx(QString name, QString desc) {
     xml.writeStartElement("trk");
     xml.writeStartElement("trkseg");
 
-    for(int i=0 ; i < m_points.size(); i++) {
-        if(m_points.at(i).coordinate().type() == QGeoCoordinate::InvalidCoordinate) {
-            break; // No position info, skip this point
-        }
+    for(QMap<uint, TrackPoint>::iterator i = m_points.begin(); i != m_points.end(); i++) {
         xml.writeStartElement("trkpt");
-        xml.writeAttribute("lat", QString::number(m_points.at(i).coordinate().latitude(), 'g', 15));
-        xml.writeAttribute("lon", QString::number(m_points.at(i).coordinate().longitude(), 'g', 15));
+        xml.writeAttribute("lat", QString::number(i.value().hasCoordinate() ? i.value().getLatitude() : 0, 'g', 15));
+        xml.writeAttribute("lon", QString::number(i.value().hasCoordinate() ? i.value().getLongitude() : 0, 'g', 15));
 
-        xml.writeTextElement("time", m_points.at(i).timestamp().toUTC().toString(Qt::ISODate));
-        if(m_points.at(i).coordinate().type() == QGeoCoordinate::Coordinate3D) {
-            xml.writeTextElement("ele", QString::number(m_points.at(i).coordinate().altitude(), 'g', 15));
+        xml.writeTextElement("time", i.value().getTime().toUTC().toString(Qt::ISODate));
+        if(i.value().hasElevation()) {
+            xml.writeTextElement("ele", QString::number(i.value().getElevation(), 'g', 15));
         }
 
         xml.writeStartElement("extensions");
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::Direction)) {
-            xml.writeTextElement("dir", QString::number(m_points.at(i).attribute(QGeoPositionInfo::Direction), 'g', 15));
+        if(i.value().hasDirection()) {
+            xml.writeTextElement("dir", QString::number(i.value().getDirection(), 'g', 15));
         }
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::GroundSpeed)) {
-            xml.writeTextElement("g_spd", QString::number(m_points.at(i).attribute(QGeoPositionInfo::GroundSpeed), 'g', 15));
+        if(i.value().hasGroundSpeed()) {
+            xml.writeTextElement("g_spd", QString::number(i.value().getGroundSpeed(), 'g', 15));
         }
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::VerticalSpeed)) {
-            xml.writeTextElement("v_spd", QString::number(m_points.at(i).attribute(QGeoPositionInfo::VerticalSpeed), 'g', 15));
+        if(i.value().hasVerticalSpeed()) {
+            xml.writeTextElement("v_spd", QString::number(i.value().getVerticalSpeed(), 'g', 15));
         }
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::MagneticVariation)) {
-            xml.writeTextElement("m_var", QString::number(m_points.at(i).attribute(QGeoPositionInfo::MagneticVariation), 'g', 15));
+        if(i.value().hasMagneticVariation()) {
+            xml.writeTextElement("m_var", QString::number(i.value().getMagneticVariation(), 'g', 15));
         }
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::HorizontalAccuracy)) {
-            xml.writeTextElement("h_acc", QString::number(m_points.at(i).attribute(QGeoPositionInfo::HorizontalAccuracy), 'g', 15));
+        if(i.value().hasHorizontalAccuracy()) {
+            xml.writeTextElement("h_acc", QString::number(i.value().getHorizontalAccuracy(), 'g', 15));
         }
-        if(m_points.at(i).hasAttribute(QGeoPositionInfo::VerticalAccuracy)) {
-            xml.writeTextElement("v_acc", QString::number(m_points.at(i).attribute(QGeoPositionInfo::VerticalAccuracy), 'g', 15));
+        if(i.value().hasVerticalAccuracy()) {
+            xml.writeTextElement("v_acc", QString::number(i.value().getVerticalAccuracy(), 'g', 15));
+        }
+        if(i.value().hasDistance()) {
+            xml.writeTextElement("distance", QString::number(i.value().getDistance(), 'g', 15));
+        }
+        if(i.value().hasCadence()) {
+            xml.writeTextElement("cadence", QString::number(i.value().getCadence(), 'g', 15));
         }
         xml.writeEndElement(); // extensions
 
@@ -223,12 +287,20 @@ void TrackRecorder::exportGpx(QString name, QString desc) {
     } else {
         QDir renaDir = QDir(homeDir + "/" + subDir);
         renaDir.remove("Autosave");
+		if (plugins) {
+			qDebug() << "got plugins for uploading ttrack";
+			plugins->uploadTrack(filename);
+		} else {
+			qDebug() << "didn't get plugins for uploading track";
+		}
     }
 }
 
 void TrackRecorder::clearTrack() {
     m_points.clear();
     m_distance = 0;
+    last_position_time = 0;
+    last_distance_time = 0;
     m_isEmpty = true;
 
     QString homeDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
@@ -262,8 +334,8 @@ QString TrackRecorder::time() const {
         minutes = 0;
         seconds = 0;
     } else {
-        QDateTime first = m_points.at(0).timestamp();
-        QDateTime last = m_points.at(m_points.size()-1).timestamp();
+        QDateTime first = m_points.begin().value().getTime();
+        QDateTime last = (m_points.end()-1).value().getTime();
         qint64 difference = first.secsTo(last);
         hours = difference / (60*60);
         minutes = (difference - hours*60*60) / 60;
@@ -349,8 +421,17 @@ void TrackRecorder::setUpdateInterval(int updateInterval) {
 }
 
 QGeoCoordinate TrackRecorder::trackPointAt(int index) {
-    if(index < m_points.length()) {
-        return m_points.at(index).coordinate();
+    if(index < m_points.size()) {
+		TrackPoint p = (m_points.begin()+index).value();
+		QGeoCoordinate coord;
+		if (p.hasCoordinate()) {
+			coord.setLatitude(p.getLatitude());
+			coord.setLongitude(p.getLongitude());
+		}
+		if (p.hasElevation()) {
+			coord.setAltitude(p.getElevation());
+		}
+        return coord;
     } else {
         return QGeoCoordinate();
     }
@@ -433,33 +514,41 @@ void TrackRecorder::autoSave() {
     QTextStream stream(&file);
     stream.setRealNumberPrecision(15);
 
-    while(m_autoSavePosition < m_points.size()) {
-        stream<<m_points.at(m_autoSavePosition).coordinate().latitude();
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).coordinate().longitude();
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).timestamp().toUTC().toString(Qt::ISODate);
-        stream<<" ";
-        if(m_points.at(m_autoSavePosition).coordinate().type() == QGeoCoordinate::Coordinate3D) {
-            stream<<m_points.at(m_autoSavePosition).coordinate().altitude();
-            stream<<" ";
-        } else {
-            stream<<"nan ";
-        }
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::Direction);
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::GroundSpeed);
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::VerticalSpeed);
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::MagneticVariation);
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::HorizontalAccuracy);
-        stream<<" ";
-        stream<<m_points.at(m_autoSavePosition).attribute(QGeoPositionInfo::VerticalAccuracy);
-        stream<<'\n';
-        m_autoSavePosition++;
-    }
+	QMap<uint, TrackPoint>::iterator i = m_points.find(m_autoSavePosition);
+	if (i == m_points.end() && m_points.size()) {
+		m_autoSavePosition = m_points.begin().key();
+		i = m_points.find(m_autoSavePosition);
+	} else {
+		i++;
+	}
+	while (i != m_points.end()) {
+		stream<<i.value().getLatitude();
+		stream<<" ";
+		stream<<i.value().getLongitude();
+		stream<<" ";
+		stream<<i.value().getTime().toUTC().toString(Qt::ISODate);
+		stream<<" ";
+		if(i.value().hasElevation()) {
+			stream<<i.value().getElevation();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		stream<<i.value().getDirection();
+		stream<<" ";
+		stream<<i.value().getGroundSpeed();
+		stream<<" ";
+		stream<<i.value().getVerticalSpeed();
+		stream<<" ";
+		stream<<i.value().getMagneticVariation();
+		stream<<" ";
+		stream<<i.value().getHorizontalAccuracy();
+		stream<<" ";
+		stream<<i.value().getVerticalAccuracy();
+		stream<<'\n';
+		m_autoSavePosition = i.key();
+		i++;
+	}
     stream.flush();
     file.close();
 }
@@ -515,7 +604,7 @@ void TrackRecorder::loadAutoSave() {
             point.setAttribute(QGeoPositionInfo::VerticalAccuracy, temp);
         }
         stream.readLine(); // Read rest of the line, if any
-        m_points.append(point);
+        m_points[point.timestamp().toTime_t()] = TrackPoint(point);
         if(m_points.size() > 1) {
             if(point.coordinate().latitude() < m_minLat) {
                 m_minLat = point.coordinate().latitude();
@@ -533,17 +622,29 @@ void TrackRecorder::loadAutoSave() {
         }
         emit newTrackPoint(point.coordinate());
     }
-    m_autoSavePosition = m_points.size();
+    if (m_points.size()) {
+		m_autoSavePosition = (--m_points.end()).key();
+	} else {
+		m_autoSavePosition = 0;
+	}
     file.close();
 
-    qDebug()<<m_autoSavePosition<<"track points loaded";
+    qDebug()<<m_points.size()<<"track points loaded";
 
     emit pointsChanged();
     emit timeChanged();
 
     if(m_points.size() > 1) {
-        for(int i=1;i<m_points.size();i++) {
-            m_distance += m_points.at(i-1).coordinate().distanceTo(m_points.at(i).coordinate());
+        for(QMap<uint, TrackPoint>::iterator i = ++m_points.begin(); i != m_points.end(); i++) {
+			TrackPoint *p1 = &(i-1).value();
+			TrackPoint *p2 = &i.value();
+			if (p1->hasCoordinate() && p2->hasCoordinate()) {
+				QGeoCoordinate coord1(p1->getLatitude(), p1->getLongitude());
+				QGeoCoordinate coord2(p2->getLatitude(), p2->getLongitude());
+				m_distance += coord1.distanceTo(coord2);
+			} else if (p1->hasDistance() && p2->hasDistance()) {
+				m_distance += p2->getDistance() - p1->getDistance();
+			}
         }
         emit distanceChanged();
     }

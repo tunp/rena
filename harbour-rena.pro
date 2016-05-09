@@ -22,7 +22,8 @@ SOURCES += src/harbour-rena.cpp \
     src/trackrecorder.cpp \
     src/historymodel.cpp \
     src/trackloader.cpp \
-    src/settings.cpp
+    src/settings.cpp \
+    src/plugins.cpp
 
 OTHER_FILES += qml/harbour-rena.qml \
     qml/cover/CoverPage.qml \
@@ -41,5 +42,5 @@ HEADERS += \
     src/trackrecorder.h \
     src/historymodel.h \
     src/trackloader.h \
-    src/settings.h
-
+    src/settings.h \
+    src/plugins.h

@@ -30,7 +30,9 @@
 #include "historymodel.h"
 #include "trackloader.h"
 #include "settings.h"
+#include "plugins.h"
 
+#include "TrackPoint.h"
 
 int main(int argc, char *argv[]) {
     QGuiApplication *app = SailfishApp::application(argc, argv);
@@ -41,6 +43,8 @@ int main(int argc, char *argv[]) {
                       QString(APP_VERSION)+QString(APP_VERSION_SUFFIX)+
                       QString(" (Sailfish)"));
 
+	qRegisterMetaType<TrackPoint>("TrackPoint");
+
     qDebug()<<app->applicationName()<<" version "<<app->applicationVersion();
     qDebug()<<"User agent: "<<userAgent;
 
@@ -48,6 +52,7 @@ int main(int argc, char *argv[]) {
     qmlRegisterType<HistoryModel>("HistoryModel", 1, 0, "HistoryModel");
     qmlRegisterType<TrackLoader>("TrackLoader", 1, 0, "TrackLoader");
     qmlRegisterType<Settings>("Settings", 1, 0, "Settings");
+    qmlRegisterType<Plugins>("Plugins", 1, 0, "Plugins");
 
     QQuickView *view = SailfishApp::createView();
     view->rootContext()->setContextProperty("appVersion", app->applicationVersion());

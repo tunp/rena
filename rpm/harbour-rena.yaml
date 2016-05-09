@@ -23,12 +23,9 @@ Requires:
 - qt5-qtdeclarative-import-location >= 5.1.0
 - qt5-qtdeclarative-import-positioning >= 5.1.0
 Files:
-- /usr/share/icons/hicolor/86x86/apps
-- /usr/share/applications
-- /usr/share/harbour-rena
-- /usr/bin
 - '%{_datadir}/icons/hicolor/86x86/apps/%{name}.png'
 - '%{_datadir}/applications/%{name}.desktop'
 - '%{_datadir}/%{name}/qml'
 - '%{_bindir}'
+- '%{_libdir}'
 PkgBR: []

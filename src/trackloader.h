@@ -26,6 +26,8 @@
 #include <QGeoCoordinate>
 #include <QXmlStreamReader>
 
+#include "TrackPoint.h"
+
 class TrackLoader : public QObject
 {
     Q_OBJECT
@@ -59,6 +61,8 @@ public:
     bool loaded();
     Q_INVOKABLE int trackPointCount();
     Q_INVOKABLE QGeoCoordinate trackPointAt(int index);
+    Q_INVOKABLE TrackPoint trackPointAt2(int index);
+    QDateTime trackPointTimeAt(int index);
 
     // Temporary "hacks" to get around misbehaving Map.fitViewportToMapItems()
     Q_INVOKABLE int fitZoomLevel(int width, int height);
@@ -80,18 +84,6 @@ signals:
 public slots:
 
 private:
-    struct TrackPoint {
-        qreal latitude;
-        qreal longitude;
-        QDateTime time;
-        qreal elevation;
-        qreal direction;
-        qreal groundSpeed;
-        qreal verticalSpeed;
-        qreal magneticVariation;
-        qreal horizontalAccuracy;
-        qreal verticalAccuracy;
-    };
 
     void load();
 

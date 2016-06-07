@@ -145,8 +145,8 @@ void TrackLoader::load() {
 			} else if (p1->hasDistance() && p2->hasDistance()) {
 				m_distance += p2->getDistance() - p1->getDistance();
 			}
-            if(m_points.at(i).groundSpeed > m_maxSpeed) {
-                m_maxSpeed = m_points.at(i).groundSpeed;
+            if(m_points.at(i).hasGroundSpeed() && m_points.at(i).getGroundSpeed() > m_maxSpeed) {
+                m_maxSpeed = m_points.at(i).getGroundSpeed();
             }
         }
         emit distanceChanged();

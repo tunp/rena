@@ -522,29 +522,73 @@ void TrackRecorder::autoSave() {
 		i++;
 	}
 	while (i != m_points.end()) {
-		stream<<i.value().getLatitude();
-		stream<<" ";
-		stream<<i.value().getLongitude();
-		stream<<" ";
-		stream<<i.value().getTime().toUTC().toString(Qt::ISODate);
-		stream<<" ";
+		if (i.value().hasCoordinate()) {
+			stream<<i.value().getLatitude();
+			stream<<" ";
+			stream<<i.value().getLongitude();
+			stream<<" ";
+		} else {
+			stream<<"nan nan ";
+		}
+		if (i.value().hasTime()) {
+			stream<<i.value().getTime().toUTC().toString(Qt::ISODate);
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
 		if(i.value().hasElevation()) {
 			stream<<i.value().getElevation();
 			stream<<" ";
 		} else {
 			stream<<"nan ";
 		}
-		stream<<i.value().getDirection();
-		stream<<" ";
-		stream<<i.value().getGroundSpeed();
-		stream<<" ";
-		stream<<i.value().getVerticalSpeed();
-		stream<<" ";
-		stream<<i.value().getMagneticVariation();
-		stream<<" ";
-		stream<<i.value().getHorizontalAccuracy();
-		stream<<" ";
-		stream<<i.value().getVerticalAccuracy();
+		if (i.value().hasDirection()) {
+			stream<<i.value().getDirection();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasGroundSpeed()) {
+			stream<<i.value().getGroundSpeed();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasVerticalSpeed()) {
+			stream<<i.value().getVerticalSpeed();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasMagneticVariation()) {
+			stream<<i.value().getMagneticVariation();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasHorizontalAccuracy()) {
+			stream<<i.value().getHorizontalAccuracy();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasVerticalAccuracy()) {
+			stream<<i.value().getVerticalAccuracy();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasDistance()) {
+			stream<<i.value().getDistance();
+			stream<<" ";
+		} else {
+			stream<<"nan ";
+		}
+		if (i.value().hasCadence()) {
+			stream<<i.value().getCadence();
+		} else {
+			stream<<"nan";
+		}
 		stream<<'\n';
 		m_autoSavePosition = i.key();
 		i++;
@@ -573,54 +617,75 @@ void TrackRecorder::loadAutoSave() {
     QTextStream stream(&file);
 
     while(!stream.atEnd()) {
-        QGeoPositionInfo point;
-        qreal lat, lon, alt, temp;
+        TrackPoint point;
+        qreal lat, lon, temp;
         QString timeStr;
-        stream>>lat>>lon>>timeStr>>alt;
-        point.setCoordinate(QGeoCoordinate(lat, lon, alt));
-        point.setTimestamp(QDateTime::fromString(timeStr,Qt::ISODate));
+        stream>>lat>>lon;
+        if (lat == lat && lon == lon) {
+			point.setLatitude(lat);
+			point.setLongitude(lon);
+		}
+		stream>>timeStr;
+		if (timeStr != "nan") {
+			point.setTime(QDateTime::fromString(timeStr,Qt::ISODate));
+		}
+		stream>>temp;
+		if(temp == temp) {
+			point.setElevation(temp);
+		}
         stream>>temp;
         if(temp == temp) {  // If value is not nan
-            point.setAttribute(QGeoPositionInfo::Direction, temp);
+            point.setDirection(temp);
         }
         stream>>temp;
         if(temp == temp) {
-            point.setAttribute(QGeoPositionInfo::GroundSpeed, temp);
+            point.setGroundSpeed(temp);
         }
         stream>>temp;
         if(temp == temp) {
-            point.setAttribute(QGeoPositionInfo::VerticalSpeed, temp);
+            point.setVerticalSpeed(temp);
         }
         stream>>temp;
         if(temp == temp) {
-            point.setAttribute(QGeoPositionInfo::MagneticVariation, temp);
+            point.setMagneticVariation(temp);
         }
         stream>>temp;
         if(temp == temp) {
-            point.setAttribute(QGeoPositionInfo::HorizontalAccuracy, temp);
+            point.setHorizontalAccuracy(temp);
         }
         stream>>temp;
         if(temp == temp) {
-            point.setAttribute(QGeoPositionInfo::VerticalAccuracy, temp);
+            point.setVerticalAccuracy(temp);
+        }
+        stream>>temp;
+        if(temp == temp) {
+            point.setDistance(temp);
+        }
+        stream>>temp;
+        if(temp == temp) {
+            point.setCadence(temp);
         }
         stream.readLine(); // Read rest of the line, if any
-        m_points[point.timestamp().toTime_t()] = TrackPoint(point);
-        if(m_points.size() > 1) {
-            if(point.coordinate().latitude() < m_minLat) {
-                m_minLat = point.coordinate().latitude();
-            } else if(point.coordinate().latitude() > m_maxLat) {
-                m_maxLat = point.coordinate().latitude();
-            }
-            if(point.coordinate().longitude() < m_minLon) {
-                m_minLon = point.coordinate().longitude();
-            } else if(point.coordinate().longitude() > m_maxLon) {
-                m_maxLon = point.coordinate().longitude();
-            }
-        } else {
-            m_minLat = m_maxLat = point.coordinate().latitude();
-            m_minLon = m_maxLon = point.coordinate().longitude();
-        }
-        emit newTrackPoint(point.coordinate());
+        m_points[point.getTime().toTime_t()] = point;
+        if (point.hasCoordinate()) {
+			if(m_points.size() > 1) {
+				if(point.getLatitude() < m_minLat) {
+					m_minLat = point.getLatitude();
+				} else if(point.getLatitude() > m_maxLat) {
+					m_maxLat = point.getLatitude();
+				}
+				if(point.getLongitude() < m_minLon) {
+					m_minLon = point.getLongitude();
+				} else if(point.getLongitude() > m_maxLon) {
+					m_maxLon = point.getLongitude();
+				}
+			} else {
+				m_minLat = m_maxLat = point.getLatitude();
+				m_minLon = m_maxLon = point.getLongitude();
+			}
+			QGeoCoordinate coord(point.getLatitude(), point.getLongitude());
+			emit newTrackPoint(coord);
+		}
     }
     if (m_points.size()) {
 		m_autoSavePosition = (--m_points.end()).key();

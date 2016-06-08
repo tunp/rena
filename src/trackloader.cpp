@@ -329,9 +329,20 @@ int TrackLoader::trackPointCount() {
 }
 
 QGeoCoordinate TrackLoader::trackPointAt(int index) {
-    return QGeoCoordinate(m_points.at(index).latitude,
-                          m_points.at(index).longitude,
-                          m_points.at(index).elevation);
+    if(index < m_points.size()) {
+		TrackPoint p = m_points.at(index);
+		QGeoCoordinate coord;
+		if (p.hasCoordinate()) {
+			coord.setLatitude(p.getLatitude());
+			coord.setLongitude(p.getLongitude());
+		}
+		if (p.hasElevation()) {
+			coord.setAltitude(p.getElevation());
+		}
+        return coord;
+    } else {
+        return QGeoCoordinate();
+    }
 }
 
 TrackPoint TrackLoader::trackPointAt2(int index) {
@@ -348,19 +359,20 @@ int TrackLoader::fitZoomLevel(int width, int height) {
         return 20;
     }
     qreal minLat, maxLat, minLon, maxLon;
-    minLat = maxLat = m_points.at(0).latitude;
-    minLon = maxLon = m_points.at(0).longitude;
+    minLat = maxLat = minLon = maxLon = nanf(""); //nan
     for(int i=1;i<m_points.size();i++) {
-        if(m_points.at(i).latitude < minLat) {
-            minLat = m_points.at(i).latitude;
-        } else if(m_points.at(i).latitude > maxLat) {
-            maxLat = m_points.at(i).latitude;
-        }
-        if(m_points.at(i).longitude < minLon) {
-            minLon = m_points.at(i).longitude;
-        } else if(m_points.at(i).longitude > maxLon) {
-            maxLon = m_points.at(i).longitude;
-        }
+		if (m_points.at(i).hasCoordinate()) {
+			if(minLat != minLat || m_points.at(i).getLatitude() < minLat) {
+				minLat = m_points.at(i).getLatitude();
+			} else if(maxLat != maxLat || m_points.at(i).getLatitude() > maxLat) {
+				maxLat = m_points.at(i).getLatitude();
+			}
+			if(minLon != minLon || m_points.at(i).getLongitude() < minLon) {
+				minLon = m_points.at(i).getLongitude();
+			} else if(maxLon != maxLon || m_points.at(i).getLongitude() > maxLon) {
+				maxLon = m_points.at(i).getLongitude();
+			}
+		}
     }
 
     m_center = QGeoCoordinate((minLat+maxLat)/2, (minLon+maxLon)/2);

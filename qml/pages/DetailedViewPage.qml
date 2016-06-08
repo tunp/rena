@@ -48,7 +48,10 @@ Page {
             var trackLength = trackLoader.trackPointCount();
             var trackPoints = [];
             for(var i=0;i<trackLength;i++) {
-                trackPoints.push(trackLoader.trackPointAt(i));
+				var point = trackLoader.trackPointAt(i);
+				if (point.latitude == point.latitude && point.longitude == point.longitude) {
+					trackPoints.push(point);
+                }
             }
             trackLine.path = trackPoints;
             trackMap.addMapItem(trackLine);
